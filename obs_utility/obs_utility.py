@@ -156,44 +156,64 @@ def ask_user(stream_name):
 # ==========================================
 # MAIN POLLING LOOP
 # ==========================================
+def get_obs_client():
+    """Attempt to connect. Returns the client or None."""
+    try:
+        # We define a timeout to prevent the connection attempt from hanging
+        return obs.ReqClient(host=OBS_HOST, port=OBS_PORT, password=OBS_PASSWORD, timeout=3)
+    except Exception:
+        return None
+
 def main_loop():
     print("[*] Starting OBS Utility (PipeWire Native Mode)...")
     config = load_config()
     
-    try:
-        cl = obs.ReqClient(host=OBS_HOST, port=OBS_PORT, password=OBS_PASSWORD)
-        print("[*] Connected to OBS WebSocket.")
-    except Exception as e:
-        print(f"[!] Could not connect to OBS.\nError: {e}")
-        return
-
-    # Push the initial state to OBS on startup
-    if config["whitelist"]:
-        update_obs_source(config["whitelist"], cl)
-
+    # Initialize connection state
+    cl = None
+    
     while True:
-        current_streams = get_active_audio_streams()
-        
-        for stream_name in current_streams:
-            if stream_name in config["whitelist"] or stream_name in config["ignorelist"]:
+        # Connection Management
+        if cl is None:
+            cl = get_obs_client()
+            if cl is None:
+                print("[!] OBS not detected. Retrying in 10s...")
+                time.sleep(10)
                 continue
+            else:
+                print("[*] Successfully connected to OBS.")
+                # Sync whitelist upon successful connection
+                if config["whitelist"]:
+                    update_obs_source(config["whitelist"], cl)
+
+        # Main Execution Logic
+        try:
+            current_streams = get_active_audio_streams()
             
-            print(f"[*] Unknown audio stream detected: '{stream_name}'. Prompting user...")
-            user_choice = ask_user(stream_name)
-            
-            if user_choice["add"]:
-                config["whitelist"].append(stream_name)
-                save_config(config)
-                print(f"[+] Added '{stream_name}' to whitelist.")
-                update_obs_source(config["whitelist"], cl)
+            for stream_name in current_streams:
+                if stream_name in config["whitelist"] or stream_name in config["ignorelist"]:
+                    continue
                 
-            elif user_choice["ignore"]:
-                config["ignorelist"].append(stream_name)
-                save_config(config)
-                print(f"[-] Ignored '{stream_name}'.")
+                print(f"[*] Unknown audio stream detected: '{stream_name}'. Prompting user...")
+                user_choice = ask_user(stream_name)
+                
+                if user_choice["add"]:
+                    config["whitelist"].append(stream_name)
+                    save_config(config)
+                    print(f"[+] Added '{stream_name}' to whitelist.")
+                    update_obs_source(config["whitelist"], cl)
+                    
+                elif user_choice["ignore"]:
+                    config["ignorelist"].append(stream_name)
+                    save_config(config)
+                    print(f"[-] Ignored '{stream_name}'.")
 
-        time.sleep(5)
-
+            time.sleep(5)
+        
+        # Error Handling
+        except Exception as e:
+            print(f"[!] Error detected: {e}. Resetting connection...")
+            cl = None # Setting this to None forces the top of the loop to re-connect
+            time.sleep(2)
 
 if __name__ == "__main__":
     main_loop()
