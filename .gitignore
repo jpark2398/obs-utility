@@ -2,3 +2,5 @@
 .venv/
 __pycache__/
 obs_audio_config.json
+audio_config.json
+popup.lock
