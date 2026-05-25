@@ -1,0 +1,4 @@
+.env
+.venv/
+__pycache__/
+obs_audio_config.json
